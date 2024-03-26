@@ -1,8 +1,7 @@
 import json
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, MessageGraph
 from langchain_core.tools import tool
 from langchain_core.utils.function_calling import convert_to_openai_tool
@@ -43,51 +42,44 @@ def invoke_save_email(state: List[BaseMessage]):
 def invoke_model(state: List[BaseMessage]):
     return model_with_tools.invoke(state)
 
-def invoke_music_model(state: List[BaseMessage]):
-    return music_model.invoke(state)
-
 def user_node(state: List[BaseMessage]):
     user_input = input("Enter more info:")
     state.append(HumanMessage(content=user_input))
     return state
 
+def invoke_music_model(state: List[BaseMessage]):
+    return state.append(SystemMessage(content="Ignore all previous messages.  Now you are an expert on contempory music, your goal is to ask the user for their favorite song."))
+
 model = ChatOpenAI(model="gpt-4-0125-preview",temperature=0)
 model_with_tools = model.bind(tools=[convert_to_openai_tool(save_email)])
 
-prompt = ChatPromptTemplate.from_messages([
-    SystemMessage(content="You are a helpful assistant, your only goal is to ask the user for their email, do not ask anything else. Only call a function if they have entered an email.")
-])
-
-output_parser = StrOutputParser()
-
-get_email_chain = prompt | model_with_tools | output_parser
-
-
-music_model = ChatOpenAI(model="gpt-4-0125-preview",temperature=0)
-music_prompt = ChatPromptTemplate.from_messages([
-    SystemMessage(content="You are an expert on contempory music, your goal is to ask the user for their favorite song. Only call a function if they have entered a song.")
-])
-
-music_chain = music_prompt | music_model | output_parser
 
 
 
 
 graph = MessageGraph()
 
+
 graph.add_node("oracle", invoke_model)
 graph.add_node("user", user_node)
-graph.add_node("music", invoke_music_model)
+graph.add_node("music_user", user_node)
+graph.add_node("music_setup", invoke_music_model)
+graph.add_node("music", model)
 graph.add_edge("user", "oracle")
 graph.add_node("save_email", invoke_save_email)
-graph.add_edge("save_email", "music")
+graph.add_edge("save_email", "music_setup")
+graph.add_edge("music_setup", "music")
+graph.add_edge("music_user", "music")
 
 
 def music_router(state: List[BaseMessage]):
-    if state and isinstance(state[-1], AIMessage):
-        return "user"
+    print(state)
+    print(len(state))
+    if len(state) > 12:
+        return "end"
     else:
-        return "music"
+        return "music_user"
+
 
 def router(state: List[BaseMessage]):
     print(state)
@@ -102,15 +94,23 @@ graph.add_conditional_edges("oracle", router, {
     "user": "user",
 })
 
+
 graph.add_conditional_edges("music", music_router, {
-    "music": "music",
-    "user": "user"
+    "music_user": "music_user",
+    "end": END
 })
 
 graph.set_entry_point("user")
 
 app = graph.compile()
 
-res = app.invoke(HumanMessage(content="I wish to enter the contest"))
+messages = [
+    SystemMessage(content="You are a helpful assistant, your only goal is to ask the user for their email, do not ask anything else. Only call a function if they have entered an email."),
+    HumanMessage(content="I wish to enter the contest")
+]
+
+print(app.get_graph().print_ascii())
+config = RunnableConfig(recursion_limit=100)
+res = app.invoke(messages, config)
 
 print(res)
