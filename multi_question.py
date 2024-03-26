@@ -6,7 +6,8 @@ from langgraph.graph import END, MessageGraph
 from langchain_core.tools import tool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_core.messages import BaseMessage, ToolMessage, SystemMessage, AIMessage
-from typing import List 
+from typing import List
+from langgraph.pregel import GraphRecursionError
 
 from dotenv import load_dotenv
 
@@ -111,6 +112,9 @@ messages = [
 
 print(app.get_graph().print_ascii())
 config = RunnableConfig(recursion_limit=100)
-res = app.invoke(messages, config)
 
-print(res)
+try:
+    res = app.invoke(messages, config)
+    print(res)
+except GraphRecursionError:
+    print("Graph recursion limit reached.")
