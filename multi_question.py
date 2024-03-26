@@ -1,8 +1,7 @@
 import json
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, MessageGraph
 from langchain_core.tools import tool
 from langchain_core.utils.function_calling import convert_to_openai_tool
@@ -76,7 +75,7 @@ graph.add_edge("music_user", "music")
 def music_router(state: List[BaseMessage]):
     print(state)
     print(len(state))
-    if len(state) > 10:
+    if len(state) > 12:
         return "end"
     else:
         return "music_user"
@@ -110,6 +109,8 @@ messages = [
     HumanMessage(content="I wish to enter the contest")
 ]
 
-res = app.invoke(messages)
+print(app.get_graph().print_ascii())
+config = RunnableConfig(recursion_limit=100)
+res = app.invoke(messages, config)
 
 print(res)
